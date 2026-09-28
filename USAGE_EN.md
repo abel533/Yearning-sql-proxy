@@ -94,6 +94,23 @@ sql-relay 只读代理监听 127.0.0.1:3307，伪装版本 5.7.36，可用数据
 
 **Keep this window open** — the proxy is running as long as it is. Press `Ctrl+C` to quit.
 
+### Install as a Windows service
+
+Put `sql-relay.exe`, `config.yaml`, `install-service.ps1`, and `uninstall-service.ps1` in the same folder. Open PowerShell **as Administrator**:
+
+```powershell
+cd into the folder
+.\install-service.ps1
+```
+
+The script registers a service named `sql-relay`, sets it to start automatically at boot, and starts it now. If the process exits unexpectedly, Windows starts it again. The service working directory is the folder that contains the executable, and logs are written to `sql-relay.log` in that same folder. Stop any foreground copy of the proxy before installing, so the listen port is free.
+
+To remove the service without deleting the executable, config, or logs:
+
+```powershell
+.\uninstall-service.ps1
+```
+
 > **On Windows, if you see "Windows protected your PC" or "Unknown publisher" on first run:**
 > this happens because the binary is not commercially code-signed (code-signing certificates
 > are billed annually and this project does not buy one). It is expected, not malware. To

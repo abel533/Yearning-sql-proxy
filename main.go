@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/go-mysql-org/go-mysql/mysql"
@@ -23,11 +24,20 @@ import (
 	"github.com/toolsHelp/Yearning-sql-proxy/internal/yearning"
 )
 
+// serviceLog 保住服务日志文件句柄，避免被 GC 关掉。非服务模式下保持 nil。
+var serviceLog *os.File
+
 func main() {
 	cfgPath := flag.String("config", "config.yaml", "配置文件路径")
 	report := flag.String("report", "", "从审计日志(JSONL)生成支持度矩阵报告后退出，不启动代理")
 	schemas := flag.Bool("schemas", false, "列出 Yearning 数据源及其可访问的库后退出（用于确认库名/数据源名）")
 	flag.Parse()
+
+	// 服务进程没有控制台，工作目录默认是 System32。先切到 exe 所在目录，
+	// 相对路径的 config.yaml 和审计日志才会落在程序旁边，并把日志写入 sql-relay.log。
+	if runningAsService() {
+		prepareServiceProcess()
+	}
 
 	// 报告模式：只做离线分析，不需要连 Yearning。
 	if *report != "" {
@@ -77,6 +87,27 @@ func main() {
 		log.Printf("警告: 拉取数据源列表失败（首次查询时会重试）: %v", err)
 	}
 
+	if runningAsService() {
+		log.Printf("以 Windows 服务 %s 运行", serviceName)
+		runService(func(stop <-chan struct{}) {
+			runProxy(cfg, yc, meta, aud, sources, stop)
+		})
+		return
+	}
+
+	stop := make(chan struct{})
+	go func() {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+		<-sig
+		log.Println("收到退出信号，关闭监听")
+		close(stop)
+	}()
+	runProxy(cfg, yc, meta, aud, sources, stop)
+}
+
+// runProxy 监听本地 MySQL 端口，直到 stop 被关闭。
+func runProxy(cfg *config.Config, yc *yearning.Client, meta *metacache.Cache, aud *audit.Logger, sources []string, stop <-chan struct{}) {
 	l, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		log.Fatalf("监听 %s 失败: %v", cfg.Listen, err)
@@ -85,16 +116,19 @@ func main() {
 		cfg.Listen, cfg.ServerVersion, sources)
 
 	go func() {
-		stop := make(chan os.Signal, 1)
-		signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 		<-stop
-		log.Println("收到退出信号，关闭监听")
+		log.Println("关闭监听")
 		_ = l.Close()
 	}()
 
 	for {
 		c, err := l.Accept()
 		if err != nil {
+			select {
+			case <-stop:
+				return
+			default:
+			}
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
 				continue
 			}
@@ -103,6 +137,25 @@ func main() {
 		}
 		go handleConn(c, cfg, yc, meta, aud)
 	}
+}
+
+// prepareServiceProcess 把服务进程的工作目录和日志固定到 exe 旁边。
+func prepareServiceProcess() {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	dir := filepath.Dir(exe)
+	if err := os.Chdir(dir); err != nil {
+		log.Printf("切换工作目录失败: %v", err)
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "sql-relay.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Printf("打开服务日志失败: %v", err)
+		return
+	}
+	serviceLog = f
+	log.SetOutput(f)
 }
 
 // writeReport 读取审计日志并把支持度矩阵写成 markdown。

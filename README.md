@@ -158,6 +158,8 @@ GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -o sql-relay-darwin-amd64 .
 
 程序为静态编译，分发时只需「可执行文件 + `config.yaml`」，目标机器无需安装 Go。
 
+Windows 上可以把代理装成服务。把 `sql-relay.exe`、`config.yaml`、`install-service.ps1`、`uninstall-service.ps1` 放在同一目录，用管理员 PowerShell 执行 `.\install-service.ps1`。服务名为 `sql-relay`，开机自动启动，日志写在同目录的 `sql-relay.log`。卸载执行 `.\uninstall-service.ps1`。
+
 ## DataGrip 连接约定
 
 | 项 | 值 |
@@ -187,6 +189,9 @@ GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -o sql-relay-darwin-amd64 .
 ```
 sql-relay/
 ├── main.go                       # 入口：监听、握手、命令循环、连接关闭防护
+├── service_windows.go            # Windows 服务控制（停止、工作目录、日志）
+├── install-service.ps1           # 安装并启动 sql-relay 服务
+├── uninstall-service.ps1         # 停止并删除 sql-relay 服务
 ├── config.yaml                   # 配置模板
 ├── 使用说明.md                    # 面向使用者的上手文档（配置/启动/连接/FAQ）
 ├── README_EN.md                  # 英文版说明文档

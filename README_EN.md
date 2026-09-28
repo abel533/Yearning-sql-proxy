@@ -178,6 +178,8 @@ GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -o sql-relay-darwin-amd64 .
 The binary is statically compiled: distributing it requires only the executable plus
 `config.yaml`, and the target machine needs no Go toolchain.
 
+On Windows the proxy can run as a service. Put `sql-relay.exe`, `config.yaml`, `install-service.ps1`, and `uninstall-service.ps1` in the same folder, then run `.\install-service.ps1` from an elevated PowerShell. The service name is `sql-relay`. It starts automatically at boot, and logs go to `sql-relay.log` in that folder. Run `.\uninstall-service.ps1` to remove the service.
+
 ## Connecting from DataGrip
 
 | Field | Value |
@@ -211,6 +213,9 @@ Once connected, `SHOW DATABASES` lists every database of every source (schemas i
 ```
 sql-relay/
 ├── main.go                       # entry: listen, handshake, command loop, close safety
+├── service_windows.go            # Windows service control (stop, working directory, log)
+├── install-service.ps1           # install and start the sql-relay service
+├── uninstall-service.ps1         # stop and delete the sql-relay service
 ├── config.yaml                   # configuration template
 ├── 使用说明.md                    # user guide (Chinese): setup/start/connect/FAQ
 ├── README_EN.md                  # this file — English README
