@@ -438,6 +438,8 @@ func (h *Handler) execQuery(query string, ev *audit.Event) (*mysql.Result, audit
 	if err != nil {
 		return nil, audit.DecisionError, queryError(err)
 	}
+	// Yearning 默认只返回 1000 行。结构查询被截断时 DataGrip 看不到后面的表和列。
+	raw = h.expandMetaPages(q, schema, targets, raw)
 	if logQueryDetail {
 		log.Printf("查询[%s] 原始结果: %d 个结果集, %d 个字段, %d 行 (sql=%.120s)",
 			h.user, len(raw.Results), rawFieldCount(raw), rawRowCount(raw), q)
