@@ -70,9 +70,9 @@ DataGrip ──MySQL协议──► 本地代理(sql-relay) ──HTTP/WebSocket
 代理会遍历账号有查询权限的**所有数据源**，为每个数据源拉取其库列表，建立
 「库名 → 数据源」的全局映射。于是：
 
-- `SHOW DATABASES` / `SELECT ... FROM information_schema.SCHEMATA` 本地返回**全部数据源的所有库**（去重、排序）。
-- `SELECT * FROM 某库.某表` 时自动按库名路由到所属数据源执行。
-- `USE 某库` 后，无前缀的查询自动切到该库所属的数据源。
+- `SHOW DATABASES` / `SELECT ... FROM information_schema.SCHEMATA` 本地返回**全部数据源的所有库**（去重、排序）。配了 `mapping` 的库以显示名出现。
+- `SELECT * FROM 某库.某表` 时自动按库名路由到所属数据源执行。库名可以写真实名，也可以写 `mapping` 里的显示名。
+- `USE 某库` 后，无前缀的查询自动切到该库所属的数据源。`某库` 同样可以是显示名。
 - 按 `source_id` 缓存多个 WebSocket 会话，切换库时不重复建连。
 
 > 注意：多个数据源下若有**同名库**，映射保留第一个匹配的数据源；如遇查错库可反馈调整优先级。
@@ -123,13 +123,19 @@ yearning:
   login_password: "your-password"
   is_ldap: true                 # 与 Yearning /ldap 入参一致
   is_oidc: false
+# 可选。真实库名 → 客户端显示名。没配到的库保持原名。
+# SQL 里的显示名会在转发前换回真实库名。
+mapping:
+  tem658982298981219327: 企业A
 timeout:
   query: 120s                    # 单次查询超时（默认 60s）
   connect: 20s                   # HTTP/WebSocket 建连超时（默认 10s）
   metadata_cache: 5m             # 表结构元数据本地缓存 TTL（默认 5m）
 ```
 
-`timeout` 三段均可省略，省略时使用上表括号内的默认值；`server_version` 省略时为 `5.7.36`。
+`timeout` 三段均可省略，省略时使用上表括号内的默认值；`server_version` 省略时为 `5.7.36`。`mapping` 可省略。
+
+`mapping` 的键是 Yearning 中的真实库名，值是 DataGrip 中看到的名字。只有整格等于真实库名的结果会改名；`SELECT * FROM 企业A.table_a`、`` `企业A`.`table_a` ``、`table_schema = '企业A'`、`USE 企业A` 会在路由和转发前换回真实库名。显示名不能重复，也不能与另一个真实库名相同。视图定义等更长文本里夹着的真实库名不会被改写。
 
 ## 构建与运行
 
@@ -164,7 +170,7 @@ GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -o sql-relay-darwin-amd64 .
 
 建议在数据源设置里关掉 "Execute statements atomically"。
 
-连接后 `SHOW DATABASES` 会显示所有数据源的全部库，直接 `SELECT * FROM 库名.表名` 即可跨库查询。
+连接后 `SHOW DATABASES` 会显示所有数据源的全部库（`mapping` 中的库显示为别名），直接 `SELECT * FROM 库名.表名` 即可跨库查询，库名用真实名或显示名都可以。
 
 ## 说明与限制
 

@@ -51,6 +51,20 @@ The remaining options:
 | `timeout.query` | Per-query timeout, default 120s; raise it for slow queries |
 | `timeout.connect` | Connection timeout, default 20s |
 | `timeout.metadata_cache` | How long schema metadata is cached locally, default 5m |
+| `mapping` | Optional. Real schema name → name shown in DataGrip. See below |
+
+When a tenant schema name is hard to recognize, add a `mapping` block (omit it to keep every name unchanged):
+
+```yaml
+mapping:
+  tem658982298981219327: "Acme"   # left: real schema name in Yearning
+  tem658982298981219333: "Beta"   # right: name shown in DataGrip
+```
+
+- Only result cells that equal a real schema name exactly are renamed (the schema list, `table_schema`, and similar). Unmapped schemas stay as they are.
+- A display name written in SQL is translated back to the real schema before the query is forwarded, so `SELECT * FROM Acme.table_a`, `` `Acme`.`table_a` ``, `table_schema = 'Acme'`, and `USE Acme` all run against the original database.
+- Display names must be unique, and a display name must not be the same as another real schema name. Otherwise the proxy refuses to start.
+- Longer text that merely contains the real name, such as a view definition, is left unchanged.
 
 ---
 
@@ -102,9 +116,9 @@ It is recommended to disable "Execute statements atomically" in the data source 
 
 Once connected:
 
-- `SHOW DATABASES` lists **every database of every data source** your account can access;
-- `SELECT * FROM db.table` works across databases — the proxy routes by schema automatically;
-- after `USE db`, unqualified table names also work.
+- `SHOW DATABASES` lists **every database of every data source** your account can access; schemas listed in `mapping` appear under their display names;
+- `SELECT * FROM db.table` works across databases — the schema may be the real name or a `mapping` display name, and the proxy routes by the real name;
+- after `USE db`, unqualified table names also work. `db` may be a display name.
 
 ---
 
@@ -123,7 +137,10 @@ Once connected:
 
 **Q: "Access denied for user ... to database ..." or "No database selected"?**
 A: Make sure User is a name from the "可用数据源" list printed at startup, and always qualify
-cross-database queries with the schema prefix (e.g. `db.table`).
+cross-database queries with the schema prefix (the real name or a `mapping` display name, e.g. `db.table`).
+
+**Q: A `mapping` display name does not find the table?**
+A: The display name must match the config exactly. Only a whole schema identifier or a whole quoted string is replaced, so a longer name such as `Acme_extra` is not treated as `Acme`. Restart the proxy after editing the config.
 
 **Q: DataGrip shows an incomplete table structure / reports a low compatibility level?**
 A: The proxy is read-only: `SHOW CREATE` can only return DDL for business tables and real

@@ -83,9 +83,9 @@ The proxy walks every data source your account can query, fetches each one's dat
 and builds a global "schema → data source" map. Therefore:
 
 - `SHOW DATABASES` / `SELECT ... FROM information_schema.SCHEMATA` are answered locally with
-  **all databases of all sources** (deduplicated and sorted).
-- `SELECT * FROM db.table` is routed automatically to the owning data source.
-- After `USE db`, unqualified queries switch to that database's data source.
+  **all databases of all sources** (deduplicated and sorted). Schemas listed in `mapping` appear under their display names.
+- `SELECT * FROM db.table` is routed automatically to the owning data source. `db` may be the real name or a `mapping` display name.
+- After `USE db`, unqualified queries switch to that database's data source. `db` may be a display name.
 - WebSocket sessions are cached per `source_id`, so switching schemas doesn't reconnect.
 
 > Note: if the same database name exists under multiple sources, the first match wins.
@@ -141,6 +141,10 @@ yearning:
   login_password: "your-password"
   is_ldap: true                 # matches Yearning /ldap parameters
   is_oidc: false
+# Optional. Real schema name → name shown to the client. Unmapped schemas stay unchanged.
+# A display name in SQL is translated back to the real schema before forwarding.
+mapping:
+  tem658982298981219327: "Acme"
 timeout:
   query: 120s                   # per-query timeout (default 60s)
   connect: 20s                  # HTTP/WebSocket connect timeout (default 10s)
@@ -148,7 +152,9 @@ timeout:
 ```
 
 All three `timeout` entries are optional; the defaults in parentheses apply when omitted.
-`server_version` defaults to `5.7.36`.
+`server_version` defaults to `5.7.36`. `mapping` is optional.
+
+A `mapping` key is the real schema name in Yearning, and the value is the name DataGrip shows. Only result cells that equal a real schema name exactly are renamed. `SELECT * FROM Acme.table_a`, `` `Acme`.`table_a` ``, `table_schema = 'Acme'`, and `USE Acme` are translated back to the real schema before routing and forwarding. Display names must be unique and must not match another real schema name. Longer text that merely contains the real name, such as a view definition, is left unchanged.
 
 ## Build and Run
 
@@ -184,8 +190,7 @@ The binary is statically compiled: distributing it requires only the executable 
 
 It is recommended to disable "Execute statements atomically" in the data source settings.
 
-Once connected, `SHOW DATABASES` lists every database of every source, and you can query
-across databases directly with `SELECT * FROM db.table`.
+Once connected, `SHOW DATABASES` lists every database of every source (schemas in `mapping` use their display names), and you can query across databases directly with `SELECT * FROM db.table`, using either the real name or a display name.
 
 ## Notes and Limitations
 
