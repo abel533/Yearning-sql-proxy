@@ -275,6 +275,9 @@ func errCodeOf(err error) uint16 {
 
 // UseDB 处理 COM_INIT_DB：记录当前库并放行。
 func (h *Handler) UseDB(dbName string) error {
+	if h.cfg != nil {
+		dbName = h.cfg.Names.Real(dbName)
+	}
 	h.mu.Lock()
 	h.schema = dbName
 	h.mu.Unlock()
@@ -313,6 +316,9 @@ func (h *Handler) HandleQuery(query string) (*mysql.Result, error) {
 		h.rec(ev)
 	}()
 	res, d, err = h.execQuery(query, ev)
+	if err == nil && h.cfg != nil {
+		res = rewriteSchemaResult(h.cfg.Names, res)
+	}
 	return res, err
 }
 
@@ -338,6 +344,10 @@ func (h *Handler) execQuery(query string, ev *audit.Event) (*mysql.Result, audit
 	// DataGrip 格式化的长 SQL 压缩后通常能降 30%~60%。语义等价，字面量不动。
 	if shrunk := classifier.ShrinkSQL(q); len(shrunk) < len(q) {
 		q = shrunk
+	}
+	// 客户端写的是显示名（企业A.table_a）。转发和路由都用真实库名。
+	if h.cfg != nil {
+		q = h.cfg.Names.ToReal(q)
 	}
 
 	// USE 语句直接改本地记录的 schema，不转发给 Yearning 的 SQL 通道。

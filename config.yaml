@@ -19,6 +19,12 @@ yearning:
 # 说明：DataGrip 的 user 字段直接填 Yearning 数据源名（如 gaia_purchase_order）。
 # 代理会加载账号下有权限的所有数据库，按库名自动路由到对应数据源。
 
+# 库名显示映射。键是 Yearning 中的真实库名，值是 DataGrip 里展示的名字。
+# 能匹配上的才改名；SQL 里写显示名（如 select * from 企业A.table_a）会换回真实库名。
+# mapping:
+#   tem658982298981219327: 企业A
+#   tem658982298981219333: 企业B
+
 timeout:
   query: 120s                    # 单次查询超时
   connect: 20s                   # HTTP/WebSocket 建连超时

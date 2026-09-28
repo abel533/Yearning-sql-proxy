@@ -30,6 +30,13 @@ type Config struct {
 	Timeout Timeout `yaml:"timeout"`
 
 	Audit Audit `yaml:"audit"`
+
+	// Mapping 把 Yearning 里的真实库名显示成易读名字。
+	// 键是真实库名，值是 DataGrip 里看到的名字。没配到的库保持原名。
+	Mapping map[string]string `yaml:"mapping"`
+
+	// Names 由 Mapping 生成，不从 yaml 读取。
+	Names SchemaNames `yaml:"-"`
 }
 
 // Audit 描述请求审计日志的配置，用于抓取客户端（DataGrip）实际发出的
@@ -139,6 +146,11 @@ func (c *Config) Validate() error {
 	default:
 		return fmt.Errorf("yearning.auth_mode 必须是 ldap 或 general")
 	}
+	names, err := NewSchemaNames(c.Mapping)
+	if err != nil {
+		return err
+	}
+	c.Names = names
 	return nil
 }
 
