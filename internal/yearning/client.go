@@ -397,18 +397,33 @@ func (c *Client) NewQuerySession(sourceID string) (*QuerySession, error) {
 		return nil, err
 	}
 	qs := &QuerySession{client: c, cfg: c.cfg, srcID: sourceID, conn: conn}
+	// 3.1.2 在 QUERY_OPEN 之前不会连接数据源。不发这帧就查，
+	// 服务端 core.db 为空，查询一定失败。
+	if err := qs.open(); err != nil {
+		qs.Close()
+		return nil, fmt.Errorf("打开 Yearning 查询连接失败: %w", err)
+	}
 	go qs.keepAlive()
 	return qs, nil
 }
 
+// open 发送 QUERY_OPEN。成功时服务端不回包，只把数据源 MySQL 连上。
+func (qs *QuerySession) open() error {
+	payload, err := msgpack.MarshalControl(msgpack.TypeOpen)
+	if err != nil {
+		return err
+	}
+	return qs.conn.write(payload)
+}
+
 // Exec 发送一条查询并返回结果。
 func (qs *QuerySession) Exec(sql, schema string) (*msgpack.QueryResults, error) {
-	payload, err := msgpack.MarshalQuery(sql, schema)
+	payload, err := msgpack.MarshalQuery(sql, schema, qs.srcID)
 	if err != nil {
 		return nil, err
 	}
-	// 先清掉空闲期间积压的心跳等旧消息，避免随后的查询结果被非阻塞投递丢弃。
-	qs.conn.drainPending()
+	// 不在这里清空 channel：QUERY_OPEN 失败时服务端会先回一条带 error 的结果。
+	// 清空会把这条错误丢掉，客户端只能看到随后的断连。
 	if err := qs.conn.write(payload); err != nil {
 		log.Printf("WS写失败(srcID=%s, payload=%d字节, sql=%d字符): %v",
 			qs.srcID, len(payload), len(sql), err)
@@ -432,15 +447,25 @@ func (qs *QuerySession) Exec(sql, schema string) (*msgpack.QueryResults, error) 
 			// 可能是心跳的纯文本 msgpack，直接忽略。
 			continue
 		}
-		// 心跳响应（heartbeat == "pong"）没有业务结果，跳过等待真正的结果。
-		if res.Heartbeat != "" {
+		// 心跳回包没有业务结果，跳过等待真正的结果。
+		if res.IsHeartbeat() {
 			continue
 		}
 		return res, nil
 	}
 }
 
-// keepAlive 每 10s 发文本 "ping" 维持会话。
+// ping 发送 QUERY_PING（msgpack type=3）。
+// 3.1.2 收到无法解码的文本 "ping" 会直接关掉 WebSocket。
+func (qs *QuerySession) ping() error {
+	payload, err := msgpack.MarshalControl(msgpack.TypePing)
+	if err != nil {
+		return err
+	}
+	return qs.conn.write(payload)
+}
+
+// keepAlive 每 10s 发 QUERY_PING 维持会话。
 // ping 失败说明连接已不可用，必须主动关闭会话（标记 done），
 // 否则会留下「IsDead() 为 false 但读写都失败」的僵尸会话，
 // 让后续查询反复拿到 websocket 错误。
@@ -450,7 +475,7 @@ func (qs *QuerySession) keepAlive() {
 	for {
 		select {
 		case <-t.C:
-			if err := qs.conn.ping(); err != nil {
+			if err := qs.ping(); err != nil {
 				log.Printf("会话保活失败(srcID=%s)，关闭会话: %v", qs.srcID, err)
 				qs.conn.close()
 				return

@@ -18,12 +18,9 @@ var errTimeout = errors.New("查询等待超时")
 // errClosed 表示底层 WebSocket 已关闭，会话需要重建。
 var errClosed = errors.New("会话已关闭")
 
-// binaryMessage / textMessage 是 gorilla websocket 的消息类型常量转写，
-// 避免在业务代码里直接引入 gorilla 的类型。
-const (
-	textMessage   = websocket.TextMessage
-	binaryMessage = websocket.BinaryMessage
-)
+// binaryMessage 是 gorilla websocket 的二进制帧常量转写。
+// Yearning 3.1.2 只把二进制 msgpack 当合法消息，文本帧会让服务端断开连接。
+const binaryMessage = websocket.BinaryMessage
 
 // gorillaConn 封装一条 WebSocket 连接，串行化写入，
 // 并用一个后台读泵把消息投递到 channel，供 Exec 消费。
@@ -114,29 +111,10 @@ func (gc *gorillaConn) readPump() {
 	}
 }
 
-// drainPending 清空 channel 里积压的旧消息（空闲期间的心跳 pong 等），
-// 在发送新查询前调用，保证随后到达的查询结果不会被非阻塞投递丢弃。
-func (gc *gorillaConn) drainPending() {
-	for {
-		select {
-		case <-gc.msgCh:
-		default:
-			return
-		}
-	}
-}
-
 func (gc *gorillaConn) write(data []byte) error {
 	gc.writeL.Lock()
 	defer gc.writeL.Unlock()
 	return gc.ws.WriteMessage(binaryMessage, data)
-}
-
-// ping 打印保活文本消息（"ping"）。
-func (gc *gorillaConn) ping() error {
-	gc.writeL.Lock()
-	defer gc.writeL.Unlock()
-	return gc.ws.WriteMessage(textMessage, []byte("ping"))
 }
 
 // read 阻塞读取一条消息直到 deadline。

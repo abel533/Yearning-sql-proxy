@@ -1142,11 +1142,13 @@ func stringsToRows(names []string) [][]interface{} {
 }
 
 // extractQualifier 从 SQL 里提取 `库名.表名` 中的库名（限定符），
-// 匹配 FROM/JOIN/UPDATE/INTO/ON 后的第一个 `xxx.yyy` 取 xxx，
+// 匹配 FROM/JOIN/UPDATE/INTO 后的第一个 `xxx.yyy` 取 xxx，
 // 但跳过 information_schema/mysql/performance_schema/sys 这类系统库限定符。
+// 不看 ON：`ON alias.col = ...` 里的限定符是表别名或表名，不是库名。
+// 把它当成库名会覆盖 USE 选中的库，Yearning 侧会去 USE 一个不存在的库。
 func extractQualifier(q string) string {
 	up := strings.ToUpper(q)
-	for _, kw := range []string{"FROM ", "JOIN ", "UPDATE ", "INTO ", "ON "} {
+	for _, kw := range []string{"FROM ", "JOIN ", "UPDATE ", "INTO "} {
 		if idx := strings.Index(up, kw); idx >= 0 {
 			rest := strings.TrimSpace(q[idx+len(kw):])
 			qual := readQualifier(rest)

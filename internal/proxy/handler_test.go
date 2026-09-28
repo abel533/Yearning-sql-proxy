@@ -71,6 +71,15 @@ func TestExtractTargetSchema(t *testing.T) {
 			"C.ordinal_position as position from information_schema.tables T, " +
 			"information_schema.columns C where T.table_schema in ( 'gaia_edi' ) " +
 			"and T.table_schema = C.table_schema and T.table_name = C.table_name", "gaia_edi"},
+		// ON 后的别名.列 / 表名.列 不是库名，不能覆盖 USE 选中的库
+		{"SELECT e.cbillcode, f.cguid FROM fk_financialaudit_detail f " +
+			"INNER JOIN fk_expensebill e ON e.cguid = f.cbillguid", ""},
+		{"SELECT fk_expensebill.cbillcode, fk_financialaudit_detail.cbillguid " +
+			"FROM fk_financialaudit_detail LEFT JOIN fk_expensebill " +
+			"ON fk_expensebill.cguid = fk_financialaudit_detail.cbillguid", ""},
+		{"SELECT fk_expensebill.cbillcode FROM tem658982298981219327.fk_financialaudit_detail " +
+			"LEFT JOIN tem658982298981219327.fk_expensebill " +
+			"ON fk_expensebill.cguid = fk_financialaudit_detail.cbillguid", "tem658982298981219327"},
 	}
 	for _, c := range cases {
 		got := extractTargetSchema(c.q)
