@@ -242,11 +242,15 @@ func (h *Handler) connIDLocked() uint32 {
 }
 
 // rowsOf 取结果集行数，便于审计判断返回是否为空。
+// BuildSimpleTextResultset 只填 RowDatas，不填 Values。
 func rowsOf(res *mysql.Result) int {
 	if res == nil || res.Resultset == nil {
 		return 0
 	}
-	return len(res.Values)
+	if n := len(res.Values); n > 0 {
+		return n
+	}
+	return len(res.RowDatas)
 }
 
 // errInfo 拆出 MySQL 错误码与错误信息，供审计分类统计。
@@ -366,6 +370,15 @@ func (h *Handler) execQuery(query string, ev *audit.Event) (*mysql.Result, audit
 	// SHOW CREATE PROCEDURE/FUNCTION：Yearning 解析器不支持 FUNCTION、PROCEDURE
 	// 未限定库名时会路由到错误数据源报 1305，改写为 information_schema 查询后本地拼装。
 	if r, handled, err := h.handleRoutineCreate(q, fw); handled {
+		if err != nil {
+			return nil, audit.DecisionError, err
+		}
+		return r, audit.DecisionLocalServed, nil
+	}
+
+	// SHOW CREATE VIEW：Yearning 查询账号通常没有 SHOW VIEW，直接转发会 1142。
+	// DataGrip 把这个错误当成内省失败，表名变红且不再补全。改为本地拼装。
+	if r, handled, err := h.handleShowCreateView(q, fw); handled {
 		if err != nil {
 			return nil, audit.DecisionError, err
 		}
